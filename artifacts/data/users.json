@@ -1,0 +1,11 @@
+[
+  {
+    "id": "bef73a7e15bb11fa",
+    "username": "testfix",
+    "passwordHash": "9400ce60d0c92f9c5bdb778fdf96d2f47488400f4f9468bc5e401f6e95b2dfa4",
+    "salt": "0296213dd323634ea0bbfb5f4a26ed7b",
+    "speakerCode": "TESTFIX",
+    "token": "78a60ccb27eb4e35f5761aed45eeb10e7af59326c2207dd5e6be4e042fd3ce64",
+    "createdAt": 1778886242395
+  }
+]
