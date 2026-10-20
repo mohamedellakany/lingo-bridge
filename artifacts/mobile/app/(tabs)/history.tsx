@@ -23,14 +23,24 @@ function formatDate(timestamp: number): string {
   });
 }
 
-function SessionItem({ session, colors }: { session: Session; colors: ReturnType<typeof useColors> }) {
+function SessionItem({
+  session,
+  colors,
+  onPress,
+}: {
+  session: Session;
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}) {
   const duration =
     session.endedAt && session.createdAt
       ? Math.round((session.endedAt - session.createdAt) / 1000 / 60)
       : null;
 
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
       style={[
         styles.item,
         { backgroundColor: colors.card, borderColor: colors.border },
@@ -110,11 +120,19 @@ function SessionItem({ session, colors }: { session: Session; colors: ReturnType
             ]}
             numberOfLines={2}
           >
-            "{session.translations[0].translated}"
+            "{session.translations[0].original}"
           </Text>
         </View>
       )}
-    </View>
+
+      <View style={[styles.viewRow, { borderTopColor: colors.border }]}>
+        <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+        <Text style={[styles.viewText, { color: colors.primary, fontFamily: "Inter_600SemiBold" }]}>
+          View transcript
+        </Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -158,7 +176,11 @@ export default function HistoryScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <SessionItem session={item} colors={colors} />
+          <SessionItem
+            session={item}
+            colors={colors}
+            onPress={() => router.push(`/session/${encodeURIComponent(item.code)}`)}
+          />
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -237,6 +259,11 @@ const styles = StyleSheet.create({
   statText: { fontSize: 12 },
   sampleBox: { borderRadius: 10, padding: 12 },
   sampleText: { fontSize: 13, lineHeight: 19, fontStyle: "italic" },
+  viewRow: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    borderTopWidth: 1, paddingTop: 12, marginTop: 2,
+  },
+  viewText: { fontSize: 13, flex: 1 },
   emptyContainer: { alignItems: "center", gap: 12, padding: 32 },
   emptyTitle: { fontSize: 20, marginTop: 8 },
   emptyDesc: {

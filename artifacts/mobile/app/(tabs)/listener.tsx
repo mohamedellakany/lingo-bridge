@@ -26,7 +26,7 @@ import { useColors } from "@/hooks/useColors";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : "http://localhost:5000";
+  : "http://localhost:8080";
 
 interface ApiSession {
   code: string;
@@ -482,7 +482,7 @@ export default function ListenerScreen() {
               setSpeakerInput(v.toLowerCase().replace(/[^a-z0-9_]/g, ""));
               setJoinError("");
             }}
-            placeholder="their_username"
+            placeholder="speaker_username"
             placeholderTextColor={colors.mutedForeground}
             style={[
               styles.codeInput,

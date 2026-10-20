@@ -42,6 +42,7 @@ interface SessionContextType {
   joinSession: (code: string) => Promise<Session | null>;
   addTranslation: (original: string, translated: string) => Promise<void>;
   refreshSessions: () => Promise<void>;
+  getSession: (code: string) => Session | undefined;
   clearActiveSession: () => void;
 }
 
@@ -165,6 +166,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [activeSession, loadSessions, saveSessions]
   );
 
+  const getSession = useCallback(
+    (code: string): Session | undefined =>
+      sessions.find((s) => s.code.toUpperCase() === code.toUpperCase()),
+    [sessions]
+  );
+
   const clearActiveSession = useCallback(() => {
     setActiveSession(null);
   }, []);
@@ -179,6 +186,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         joinSession,
         addTranslation,
         refreshSessions: loadSessions,
+        getSession,
         clearActiveSession,
       }}
     >

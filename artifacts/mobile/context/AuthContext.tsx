@@ -12,11 +12,12 @@ const USER_KEY = "@lingobridge_auth_user";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : "http://localhost:5000";
+  : "http://localhost:8080";
 
 export interface AuthUser {
   id: string;
   username: string;
+  email: string;
   speakerCode: string;
   createdAt: number;
 }
@@ -26,7 +27,16 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<{ error?: string }>;
-  register: (username: string, password: string) => Promise<{ error?: string }>;
+  // Step 1 of signup: sends an OTP to the email. On success the caller moves
+  // to the verification step. Does NOT log the user in yet.
+  register: (
+    username: string,
+    email: string,
+    password: string
+  ) => Promise<{ error?: string; pending?: boolean }>;
+  // Step 2 of signup: verifies the emailed code and logs the user in.
+  verifyOtp: (username: string, code: string) => Promise<{ error?: string }>;
+  resendOtp: (username: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -94,25 +104,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const register = useCallback(
-    async (username: string, password: string): Promise<{ error?: string }> => {
+    async (
+      username: string,
+      email: string,
+      password: string
+    ): Promise<{ error?: string; pending?: boolean }> => {
       try {
         const resp = await fetch(`${API_BASE}/api/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ username, email, password }),
+        });
+        const data = (await resp.json()) as {
+          pending?: boolean;
+          error?: string;
+        };
+        if (!resp.ok || data.error) {
+          return { error: data.error ?? "Registration failed" };
+        }
+        return { pending: true };
+      } catch {
+        return { error: "Network error. Please try again." };
+      }
+    },
+    []
+  );
+
+  const verifyOtp = useCallback(
+    async (username: string, code: string): Promise<{ error?: string }> => {
+      try {
+        const resp = await fetch(`${API_BASE}/api/auth/verify-otp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, code }),
         });
         const data = (await resp.json()) as {
           user?: AuthUser;
           token?: string;
           error?: string;
         };
-        if (!resp.ok || data.error) return { error: data.error ?? "Registration failed" };
+        if (!resp.ok || data.error) {
+          return { error: data.error ?? "Verification failed" };
+        }
         await Promise.all([
           AsyncStorage.setItem(TOKEN_KEY, data.token!),
           AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user!)),
         ]);
         setToken(data.token!);
         setUser(data.user!);
+        return {};
+      } catch {
+        return { error: "Network error. Please try again." };
+      }
+    },
+    []
+  );
+
+  const resendOtp = useCallback(
+    async (username: string): Promise<{ error?: string }> => {
+      try {
+        const resp = await fetch(`${API_BASE}/api/auth/resend-otp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username }),
+        });
+        const data = (await resp.json()) as { ok?: boolean; error?: string };
+        if (!resp.ok || data.error) {
+          return { error: data.error ?? "Could not resend the code" };
+        }
         return {};
       } catch {
         return { error: "Network error. Please try again." };
@@ -138,7 +197,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{ user, token, isLoading, login, register, verifyOtp, resendOtp, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

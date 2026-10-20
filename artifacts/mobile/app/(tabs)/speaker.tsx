@@ -37,7 +37,7 @@ const SEGMENT_DURATION_MS = 5000;
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : "http://localhost:5000";
+  : "http://localhost:8080";
 
 export default function SpeakerScreen() {
   const router = useRouter();

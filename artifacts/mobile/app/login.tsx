@@ -84,7 +84,7 @@ export default function LoginScreen() {
               <TextInput
                 value={username}
                 onChangeText={(v) => { setUsername(v); setError(""); }}
-                placeholder="your_username"
+                placeholder="username"
                 placeholderTextColor={colors.mutedForeground}
                 style={[styles.input, { color: colors.foreground, fontFamily: "Inter_400Regular" }]}
                 autoCapitalize="none"
