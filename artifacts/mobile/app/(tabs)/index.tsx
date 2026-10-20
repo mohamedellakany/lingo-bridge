@@ -2,9 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +22,9 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { user, logout } = useAuth();
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0) + 16;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 24);
@@ -38,7 +43,18 @@ export default function HomeScreen() {
     router.push("/(tabs)/listener");
   };
 
-  const handleLogout = async () => {
+  const handleViewConversations = () => {
+    setMenuOpen(false);
+    router.push("/(tabs)/history");
+  };
+
+  const handleLogoutPress = () => {
+    setMenuOpen(false);
+    setConfirmLogout(true);
+  };
+
+  const confirmLogoutYes = async () => {
+    setConfirmLogout(false);
     await logout();
   };
 
@@ -69,7 +85,7 @@ export default function HomeScreen() {
 
           {user ? (
             <TouchableOpacity
-              onPress={handleLogout}
+              onPress={() => setMenuOpen(true)}
               style={[styles.userChip, { backgroundColor: colors.card, borderColor: colors.border }]}
             >
               <View style={[styles.userDot, { backgroundColor: colors.primary }]}>
@@ -78,7 +94,7 @@ export default function HomeScreen() {
               <Text style={[styles.userChipText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>
                 {user.username}
               </Text>
-              <Ionicons name="log-out-outline" size={14} color={colors.mutedForeground} />
+              <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -91,6 +107,96 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* User dropdown menu */}
+        <Modal
+          visible={menuOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuOpen(false)}
+        >
+          <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
+            <View
+              style={[
+                styles.menuCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  top: topPad + 44,
+                  right: 20,
+                },
+              ]}
+            >
+              {user && (
+                <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.menuName, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+                    {user.username}
+                  </Text>
+                  <Text style={[styles.menuSub, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                    Speaker ID: {user.speakerCode}
+                  </Text>
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.menuItem} onPress={handleViewConversations}>
+                <Ionicons name="chatbubbles-outline" size={18} color={colors.foreground} />
+                <Text style={[styles.menuItemText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>
+                  My Conversations
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={handleLogoutPress}>
+                <Ionicons name="log-out-outline" size={18} color={colors.destructive} />
+                <Text style={[styles.menuItemText, { color: colors.destructive, fontFamily: "Inter_500Medium" }]}>
+                  Log out
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Logout confirmation */}
+        <Modal
+          visible={confirmLogout}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setConfirmLogout(false)}
+        >
+          <Pressable style={styles.confirmOverlay} onPress={() => setConfirmLogout(false)}>
+            <Pressable
+              style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={[styles.confirmIconWrap, { backgroundColor: colors.destructive + "18" }]}>
+                <Ionicons name="log-out-outline" size={26} color={colors.destructive} />
+              </View>
+              <Text style={[styles.confirmTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+                Log out?
+              </Text>
+              <Text style={[styles.confirmDesc, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                Are you sure you want to log out of your account?
+              </Text>
+              <View style={styles.confirmButtons}>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, styles.confirmNo, { borderColor: colors.border }]}
+                  onPress={() => setConfirmLogout(false)}
+                >
+                  <Text style={[styles.confirmBtnText, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+                    No
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, { backgroundColor: colors.destructive }]}
+                  onPress={confirmLogoutYes}
+                >
+                  <Text style={[styles.confirmBtnText, { color: "#FFF", fontFamily: "Inter_600SemiBold" }]}>
+                    Yes, log out
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* Hero text */}
         <View style={styles.hero}>
@@ -258,6 +364,66 @@ const styles = StyleSheet.create({
   userChipText: { fontSize: 13 },
   signInBtn: { borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 7 },
   signInBtnText: { fontSize: 13 },
+  menuOverlay: { flex: 1 },
+  menuCard: {
+    position: "absolute",
+    minWidth: 220,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  menuHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
+  menuName: { fontSize: 15 },
+  menuSub: { fontSize: 12, marginTop: 2 },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  menuItemText: { fontSize: 15 },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+  },
+  confirmCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 10,
+  },
+  confirmIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  confirmTitle: { fontSize: 20 },
+  confirmDesc: { fontSize: 14, textAlign: "center", lineHeight: 20 },
+  confirmButtons: { flexDirection: "row", gap: 12, marginTop: 14, width: "100%" },
+  confirmBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmNo: { borderWidth: 1.5 },
+  confirmBtnText: { fontSize: 15 },
   hero: { gap: 10, paddingVertical: 4 },
   heroTitle: { fontSize: 36, lineHeight: 44 },
   heroSub: { fontSize: 14, lineHeight: 22 },

@@ -17,6 +17,7 @@ export interface Translation {
 }
 
 export interface Session {
+  id: string;
   code: string;
   fromLang: string;
   toLang: string;
@@ -43,6 +44,8 @@ interface SessionContextType {
   addTranslation: (original: string, translated: string) => Promise<void>;
   refreshSessions: () => Promise<void>;
   getSession: (code: string) => Session | undefined;
+  deleteSession: (id: string) => Promise<void>;
+  clearAllSessions: () => Promise<void>;
   clearActiveSession: () => void;
 }
 
@@ -66,8 +69,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
       if (data) {
         const parsed: Session[] = JSON.parse(data);
-        setSessions(parsed);
-        return parsed;
+        // Backfill a stable id for records saved before ids existed.
+        const normalized = parsed.map((s) => ({
+          ...s,
+          id: s.id ?? `${s.code}-${s.createdAt}`,
+        }));
+        setSessions(normalized);
+        return normalized;
       }
       return [] as Session[];
     } catch {
@@ -97,18 +105,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       code?: string
     ): Promise<string> => {
       const sessionCode = code ?? generateCode();
+      const now = Date.now();
       const newSession: Session = {
+        id: generateId(),
         code: sessionCode,
         fromLang,
         toLang,
         fromLangName,
         toLangName,
-        createdAt: Date.now(),
+        createdAt: now,
         translations: [],
         isActive: true,
       };
       const current = await loadSessions();
-      const updated = [newSession, ...current];
+      // Retire any sessions still flagged as active (e.g. a previous session
+      // that never ended cleanly) so only the new one shows as LIVE.
+      const retired = current.map((s) =>
+        s.isActive ? { ...s, isActive: false, endedAt: s.endedAt ?? now } : s
+      );
+      const updated = [newSession, ...retired];
       await saveSessions(updated);
       setActiveSession(newSession);
       return sessionCode;
@@ -120,7 +135,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!activeSession) return;
     const current = await loadSessions();
     const updated = current.map((s) =>
-      s.code === activeSession.code
+      s.id === activeSession.id
         ? { ...s, isActive: false, endedAt: Date.now() }
         : s
     );
@@ -158,7 +173,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       };
       const current = await loadSessions();
       const updatedSessions = current.map((s) =>
-        s.code === activeSession.code ? updatedSession : s
+        s.id === activeSession.id ? updatedSession : s
       );
       await saveSessions(updatedSessions);
       setActiveSession(updatedSession);
@@ -167,10 +182,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getSession = useCallback(
-    (code: string): Session | undefined =>
-      sessions.find((s) => s.code.toUpperCase() === code.toUpperCase()),
+    (idOrCode: string): Session | undefined =>
+      sessions.find(
+        (s) =>
+          s.id === idOrCode ||
+          s.code.toUpperCase() === idOrCode.toUpperCase()
+      ),
     [sessions]
   );
+
+  const deleteSession = useCallback(
+    async (id: string) => {
+      const current = await loadSessions();
+      const updated = current.filter((s) => s.id !== id);
+      await saveSessions(updated);
+    },
+    [loadSessions, saveSessions]
+  );
+
+  const clearAllSessions = useCallback(async () => {
+    await saveSessions([]);
+    setActiveSession(null);
+  }, [saveSessions]);
 
   const clearActiveSession = useCallback(() => {
     setActiveSession(null);
@@ -187,6 +220,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         addTranslation,
         refreshSessions: loadSessions,
         getSession,
+        deleteSession,
+        clearAllSessions,
         clearActiveSession,
       }}
     >

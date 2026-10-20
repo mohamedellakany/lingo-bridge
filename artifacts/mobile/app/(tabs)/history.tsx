@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   FlatList,
+  Modal,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -27,10 +29,12 @@ function SessionItem({
   session,
   colors,
   onPress,
+  onDelete,
 }: {
   session: Session;
   colors: ReturnType<typeof useColors>;
   onPress: () => void;
+  onDelete: () => void;
 }) {
   const duration =
     session.endedAt && session.createdAt
@@ -70,14 +74,23 @@ function SessionItem({
             </View>
           )}
         </View>
-        <Text
-          style={[
-            styles.itemDate,
-            { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
-          ]}
-        >
-          {formatDate(session.createdAt)}
-        </Text>
+        <View style={styles.itemHeaderRight}>
+          <Text
+            style={[
+              styles.itemDate,
+              { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+            ]}
+          >
+            {formatDate(session.createdAt)}
+          </Text>
+          <TouchableOpacity
+            onPress={onDelete}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={styles.deleteBtn}
+          >
+            <Ionicons name="trash-outline" size={16} color={colors.destructive} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.langRow}>
@@ -140,7 +153,10 @@ export default function HistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const { sessions, refreshSessions } = useSession();
+  const { sessions, refreshSessions, deleteSession, clearAllSessions } = useSession();
+
+  // Which session is pending deletion (null = none). "ALL" = clear everything.
+  const [pendingDelete, setPendingDelete] = useState<Session | "ALL" | null>(null);
 
   useEffect(() => {
     refreshSessions();
@@ -148,6 +164,18 @@ export default function HistoryScreen() {
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0) + 12;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
+
+  const confirmDelete = async () => {
+    if (pendingDelete === "ALL") {
+      await clearAllSessions();
+    } else if (pendingDelete) {
+      await deleteSession(pendingDelete.id);
+    }
+    setPendingDelete(null);
+    refreshSessions();
+  };
+
+  const isClearAll = pendingDelete === "ALL";
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -163,12 +191,18 @@ export default function HistoryScreen() {
         >
           Session History
         </Text>
-        <View style={{ width: 38 }} />
+        {sessions.length > 0 ? (
+          <TouchableOpacity onPress={() => setPendingDelete("ALL")} style={styles.backBtn}>
+            <Ionicons name="trash-outline" size={20} color={colors.destructive} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 38 }} />
+        )}
       </View>
 
       <FlatList<Session>
         data={sessions}
-        keyExtractor={(item) => item.code}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.list,
           { paddingBottom: bottomPad },
@@ -179,7 +213,8 @@ export default function HistoryScreen() {
           <SessionItem
             session={item}
             colors={colors}
-            onPress={() => router.push(`/session/${encodeURIComponent(item.code)}`)}
+            onPress={() => router.push(`/session/${encodeURIComponent(item.id)}`)}
+            onDelete={() => setPendingDelete(item)}
           />
         )}
         ListEmptyComponent={
@@ -213,6 +248,51 @@ export default function HistoryScreen() {
           </View>
         }
       />
+
+      {/* Delete confirmation */}
+      <Modal
+        visible={pendingDelete !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingDelete(null)}
+      >
+        <Pressable style={styles.confirmOverlay} onPress={() => setPendingDelete(null)}>
+          <Pressable
+            style={[styles.confirmCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={[styles.confirmIconWrap, { backgroundColor: colors.destructive + "18" }]}>
+              <Ionicons name="trash-outline" size={26} color={colors.destructive} />
+            </View>
+            <Text style={[styles.confirmTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+              {isClearAll ? "Delete all sessions?" : "Delete this session?"}
+            </Text>
+            <Text style={[styles.confirmDesc, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+              {isClearAll
+                ? "This permanently removes all saved conversations. This cannot be undone."
+                : "This permanently removes this conversation and its transcript. This cannot be undone."}
+            </Text>
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, styles.confirmNo, { borderColor: colors.border }]}
+                onPress={() => setPendingDelete(null)}
+              >
+                <Text style={[styles.confirmBtnText, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmBtn, { backgroundColor: colors.destructive }]}
+                onPress={confirmDelete}
+              >
+                <Text style={[styles.confirmBtnText, { color: "#FFF", fontFamily: "Inter_600SemiBold" }]}>
+                  {isClearAll ? "Delete all" : "Delete"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -242,6 +322,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   itemLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  itemHeaderRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  deleteBtn: { padding: 2 },
   statusIndicator: { width: 8, height: 8, borderRadius: 4 },
   itemCode: { fontSize: 16, letterSpacing: 0.5 },
   liveTag: {
@@ -282,4 +364,40 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   startBtnText: { color: "#FFF", fontSize: 15 },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+  },
+  confirmCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 10,
+  },
+  confirmIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  confirmTitle: { fontSize: 20, textAlign: "center" },
+  confirmDesc: { fontSize: 14, textAlign: "center", lineHeight: 20 },
+  confirmButtons: { flexDirection: "row", gap: 12, marginTop: 14, width: "100%" },
+  confirmBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmNo: { borderWidth: 1.5 },
+  confirmBtnText: { fontSize: 15 },
 });

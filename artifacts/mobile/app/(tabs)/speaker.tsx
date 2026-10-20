@@ -109,6 +109,18 @@ export default function SpeakerScreen() {
 
   // ─── Translation via API ─────────────────────────────────────────────────
 
+  const stopCurrentRecording = useCallback(async (): Promise<string | null> => {
+    const rec = currentRecordingRef.current;
+    if (!rec) return null;
+    currentRecordingRef.current = null;
+    try {
+      await rec.stopAndUnloadAsync();
+      return rec.getURI() ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const sendSegmentForTranslation = useCallback(
     async (uri: string) => {
       try {
@@ -155,10 +167,23 @@ export default function SpeakerScreen() {
           original?: string;
           translated?: string;
           error?: string;
+          fatal?: boolean;
         };
 
         if (data.error) {
           setApiError(data.error);
+          // A fatal error (billing, bad key, rate limit) won't resolve by
+          // retrying, so stop the recording loop instead of hammering the API.
+          if (data.fatal) {
+            recordingActiveRef.current = false;
+            if (segmentTimerRef.current) {
+              clearTimeout(segmentTimerRef.current);
+              segmentTimerRef.current = null;
+            }
+            await stopCurrentRecording();
+            setIsRecording(false);
+            setStatusText("Stopped");
+          }
         } else if (data.original && data.original.length > 1) {
           setCurrentOriginal(data.original);
           setCurrentTranslation(data.translated ?? "");
@@ -174,22 +199,10 @@ export default function SpeakerScreen() {
         }
       }
     },
-    [fromLang, toLang, addTranslation]
+    [fromLang, toLang, addTranslation, stopCurrentRecording]
   );
 
   // ─── Recording segments ──────────────────────────────────────────────────
-
-  const stopCurrentRecording = useCallback(async (): Promise<string | null> => {
-    const rec = currentRecordingRef.current;
-    if (!rec) return null;
-    currentRecordingRef.current = null;
-    try {
-      await rec.stopAndUnloadAsync();
-      return rec.getURI() ?? null;
-    } catch {
-      return null;
-    }
-  }, []);
 
   const startNewSegment = useCallback(async () => {
     if (!recordingActiveRef.current) return;

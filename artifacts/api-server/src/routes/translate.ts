@@ -1,8 +1,34 @@
 import { Router } from "express";
 import OpenAI from "openai";
 import { toFile } from "openai";
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 import { addTranslationToSession } from "../store/sessions";
+
+// ── Translation provider ──────────────────────────────────────────────────
+// Groq (free tier) is OpenAI-compatible, so the same SDK works by pointing it
+// at Groq's base URL. Switch providers with TRANSLATION_PROVIDER in .env.
+const PROVIDER = (process.env["TRANSLATION_PROVIDER"] ?? "openai").toLowerCase();
+
+const PROVIDERS = {
+  groq: {
+    apiKey: process.env["GROQ_API_KEY"],
+    baseURL: "https://api.groq.com/openai/v1",
+    transcribeModel: "whisper-large-v3-turbo",
+    translateModel: "openai/gpt-oss-120b",
+  },
+  openai: {
+    apiKey: process.env["OPENAI_API_KEY"],
+    baseURL: undefined,
+    transcribeModel: "gpt-4o-mini-transcribe",
+    translateModel: "gpt-4o-mini",
+  },
+} as const;
+
+const active = PROVIDERS[PROVIDER as keyof typeof PROVIDERS] ?? PROVIDERS.openai;
+
+const openai = new OpenAI({
+  apiKey: active.apiKey,
+  ...(active.baseURL ? { baseURL: active.baseURL } : {}),
+});
 
 const router: Router = Router();
 
@@ -40,7 +66,7 @@ router.post("/translate", async (req, res) => {
 
     const transcriptionResponse = await openai.audio.transcriptions.create({
       file: await toFile(audioBuffer, `audio.${ext}`, { type: mimeType }),
-      model: "gpt-4o-mini-transcribe",
+      model: active.transcribeModel,
       language: fromLang,
       response_format: "json",
     });
@@ -53,7 +79,7 @@ router.post("/translate", async (req, res) => {
     }
 
     const translationResponse = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: active.translateModel,
       max_completion_tokens: 500,
       messages: [
         {
@@ -74,7 +100,33 @@ router.post("/translate", async (req, res) => {
     res.json({ original, translated });
   } catch (err: unknown) {
     req.log.error({ err }, "Translation error");
-    res.status(500).json({ error: "Translation failed. Please try again." });
+
+    // Surface a clear, actionable message and a flag telling the client
+    // whether retrying is pointless (billing/auth/config problems).
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? (err as { status?: number }).status
+        : undefined;
+    const code =
+      typeof err === "object" && err !== null && "code" in err
+        ? (err as { code?: string }).code
+        : undefined;
+
+    let message = "Translation failed. Please try again.";
+    let fatal = false;
+
+    if (code === "credit_balance_exhausted" || code === "insufficient_quota") {
+      message = "The translation service has no credits left. Check the provider billing.";
+      fatal = true;
+    } else if (status === 401 || status === 403) {
+      message = "The translation service rejected the API key. Check your configuration.";
+      fatal = true;
+    } else if (status === 429) {
+      message = "Rate limit reached. Please wait a moment and try again.";
+      fatal = true;
+    }
+
+    res.status(status === 429 ? 429 : 500).json({ error: message, fatal });
   }
 });
 
