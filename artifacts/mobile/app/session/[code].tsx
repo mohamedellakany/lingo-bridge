@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSession } from "@/context/SessionContext";
 import { useColors } from "@/hooks/useColors";
+import { directionStyle } from "@/hooks/useTextDirection";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString(undefined, {
@@ -190,7 +191,13 @@ export default function SessionDetailScreen() {
                 <Text style={[styles.lineTime, { color: colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>
                   {formatTime(t.timestamp)}
                 </Text>
-                <Text style={[styles.lineText, { color: colors.foreground, fontFamily: "Inter_400Regular" }]}>
+                <Text
+                  style={[
+                    styles.lineText,
+                    { color: colors.foreground, fontFamily: "Inter_400Regular" },
+                    directionStyle(t.original),
+                  ]}
+                >
                   {t.original}
                 </Text>
               </View>

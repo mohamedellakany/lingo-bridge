@@ -145,6 +145,26 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => { setMenuOpen(false); router.push("/legal/privacy"); }}
+              >
+                <Ionicons name="shield-outline" size={18} color={colors.foreground} />
+                <Text style={[styles.menuItemText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>
+                  Privacy Policy
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => { setMenuOpen(false); router.push("/legal/terms"); }}
+              >
+                <Ionicons name="document-text-outline" size={18} color={colors.foreground} />
+                <Text style={[styles.menuItemText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>
+                  Terms of Service
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity style={styles.menuItem} onPress={handleLogoutPress}>
                 <Ionicons name="log-out-outline" size={18} color={colors.destructive} />
                 <Text style={[styles.menuItemText, { color: colors.destructive, fontFamily: "Inter_500Medium" }]}>

@@ -7,9 +7,11 @@ A real-time voice translation app that lets a speaker broadcast live translated 
 - **Monorepo:** pnpm workspaces, Node.js, TypeScript 5.9
 - **Mobile/Web:** Expo (React Native) with Expo Router — runs on iOS, Android, and web
 - **API:** Express 5
-- **Database:** PostgreSQL + Drizzle ORM
+- **Real-time:** WebSockets (`ws`) for live translation delivery to listeners
+- **Database:** PostgreSQL + Drizzle ORM (optional; falls back to in-memory/JSON)
+- **Auth:** bcrypt password hashing, expiring access tokens, rate limiting
 - **Validation:** Zod
-- **AI:** OpenAI API (translation + speech)
+- **AI:** Groq (default) or OpenAI for speech-to-text + translation
 - **Build:** esbuild
 
 ## Project Structure
@@ -100,5 +102,30 @@ The web app runs at `http://localhost:8081`.
 ## Features
 
 - **Speaker mode:** pick source/target languages, start a session, broadcast live translated text and audio, and share a session code.
-- **Listener mode:** join with a session code and receive translated subtitles in large, readable text.
-- **History:** browse past sessions with duration, phrase count, and translation snippets.
+- **Listener mode:** join with a session code and receive translated subtitles in large, readable text — delivered instantly over WebSockets.
+- **History:** browse past sessions with duration, phrase count, and translation snippets; delete individual sessions or clear all.
+- **Transcripts:** reopen any past session and read the full conversation in the original language, with RTL support for Arabic.
+- **Legal:** built-in Privacy Policy and Terms of Service screens (required for app store publishing).
+
+## Database (optional)
+
+By default the server runs with no database — sessions, transcripts, users, and
+tokens live in memory plus a local JSON file. This is fine for local development.
+
+To enable **persistent, multi-device** storage, provision a PostgreSQL database
+(local, or a free one from [Neon](https://neon.tech) / [Supabase](https://supabase.com)),
+set `DATABASE_URL` in `artifacts/api-server/.env`, then push the schema:
+
+```bash
+pnpm --filter @workspace/db run push
+```
+
+The server logs which mode it's in on startup (`database: "postgres"` or
+`"in-memory/json"`).
+
+## Security notes
+
+- Passwords are hashed with **bcrypt** (never stored in plain text).
+- Access tokens **expire** after 30 days and are purged periodically.
+- Auth endpoints (login, register, OTP) are **rate limited** per IP.
+- Set `app.set("trust proxy", 1)` is enabled for correct client IPs behind a proxy.

@@ -28,6 +28,10 @@ const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : "http://localhost:8080";
 
+// WebSocket endpoint derived from the API base (http→ws, https→wss).
+const WS_BASE =
+  API_BASE.replace(/^http/, "ws").replace(/\/$/, "") + "/ws";
+
 interface ApiSession {
   code: string;
   fromLang: string;
@@ -64,7 +68,9 @@ export default function ListenerScreen() {
   const [listenMode, setListenMode] = useState<ListenMode>("listen");
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeCodeRef = useRef<string>("");
   const lastSpokenIdRef = useRef<string>("");
 
   // Pulse animation for the speaker wave (listen mode)
@@ -116,31 +122,99 @@ export default function ListenerScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const startPolling = (sessionCode: string) => {
-    pollRef.current = setInterval(async () => {
+  // Fetch the current state of a session once (used on join and reconnect to
+  // catch up on anything sent before the socket was listening).
+  const fetchSessionSnapshot = async (code: string) => {
+    try {
+      const resp = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(code)}`);
+      if (!resp.ok) return;
+      const session = (await resp.json()) as ApiSession;
+      setWaitingForSpeaker(null);
+      setJoinedSession(session);
+      if (session.translations.length > 0) {
+        const last = session.translations[session.translations.length - 1];
+        setLatestTranslation({ id: last.id, original: last.original, translated: last.translated });
+      }
+    } catch {
+      // ignore transient errors; the socket will deliver new items
+    }
+  };
+
+  const closeRealtime = () => {
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  };
+
+  // Open a WebSocket, subscribe to the session code, and stream translations
+  // live. Reconnects automatically if the connection drops.
+  const connectRealtime = (code: string) => {
+    activeCodeRef.current = code;
+    closeRealtime();
+
+    const ws = new WebSocket(WS_BASE);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "subscribe", code }));
+    };
+
+    ws.onmessage = (event) => {
       try {
-        const resp = await fetch(
-          `${API_BASE}/api/sessions/${encodeURIComponent(sessionCode)}`
-        );
-        if (!resp.ok) return; // still waiting — keep polling
-        const session = (await resp.json()) as ApiSession;
-        // Speaker just went live — transition from waiting to connected
-        setWaitingForSpeaker(null);
-        setJoinedSession(session);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        if (session.translations.length > 0) {
-          const last = session.translations[session.translations.length - 1];
-          setLatestTranslation({ id: last.id, original: last.original, translated: last.translated });
+        const msg = JSON.parse(event.data as string) as {
+          type: string;
+          translation?: { id: string; original: string; translated: string };
+        };
+        if (msg.type === "translation" && msg.translation) {
+          const t = msg.translation;
+          setWaitingForSpeaker(null);
+          setJoinedSession((prev) => {
+            if (prev) {
+              return {
+                ...prev,
+                translations: [...prev.translations, t] as ApiSession["translations"],
+              };
+            }
+            // We were waiting (no session metadata yet) — pull the full
+            // session details, then this translation is already included.
+            fetchSessionSnapshot(code);
+            return prev;
+          });
+          setLatestTranslation({
+            id: t.id,
+            original: t.original,
+            translated: t.translated,
+          });
+        } else if (msg.type === "ended") {
+          // Speaker ended the session.
+          setLatestTranslation(null);
         }
       } catch {
-        // ignore transient network errors
+        // ignore malformed messages
       }
-    }, 1500);
+    };
+
+    ws.onclose = () => {
+      // Auto-reconnect after a short delay if we're still joined.
+      if (activeCodeRef.current === code) {
+        reconnectRef.current = setTimeout(() => connectRealtime(code), 2000);
+      }
+    };
+
+    ws.onerror = () => {
+      // onclose will follow and handle reconnect.
+    };
   };
 
   useEffect(() => {
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      closeRealtime();
       Speech.stop();
     };
   }, []);
@@ -164,12 +238,13 @@ export default function ListenerScreen() {
           const last = session.translations[session.translations.length - 1];
           setLatestTranslation({ id: last.id, original: last.original, translated: last.translated });
         }
-        startPolling(session.code);
       } else {
-        // Speaker not live yet — enter waiting state and keep polling
+        // Speaker not live yet — show the waiting state.
         setWaitingForSpeaker(code);
-        startPolling(code);
       }
+      // Either way, open the live stream: it delivers new translations and,
+      // for a not-yet-live speaker, the first message flips us to connected.
+      connectRealtime(code);
     } catch {
       setJoinError("Something went wrong. Please try again.");
     } finally {
@@ -178,7 +253,7 @@ export default function ListenerScreen() {
   };
 
   const handleLeave = () => {
-    if (pollRef.current) clearInterval(pollRef.current);
+    closeRealtime();
     Speech.stop();
     setIsSpeaking(false);
     setJoinedSession(null);

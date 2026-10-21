@@ -6,6 +6,10 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Needed so express-rate-limit sees the real client IP when running behind a
+// reverse proxy / load balancer in production.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,

@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 type Step = "details" | "otp";
 const OTP_LENGTH = 6;
@@ -275,6 +276,11 @@ export default function RegisterScreen() {
             )}
           </LinearGradient>
         </TouchableOpacity>
+
+        <GoogleSignInButton
+          onError={setError}
+          onSuccess={() => router.replace("/(tabs)/")}
+        />
 
         <View style={styles.switchRow}>
           <Text style={[styles.switchText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>

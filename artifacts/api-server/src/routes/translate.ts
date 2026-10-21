@@ -94,7 +94,7 @@ router.post("/translate", async (req, res) => {
       translationResponse.choices[0]?.message?.content?.trim() ?? "";
 
     if (sessionCode) {
-      addTranslationToSession(sessionCode, original, translated);
+      await addTranslationToSession(sessionCode, original, translated);
     }
 
     res.json({ original, translated });

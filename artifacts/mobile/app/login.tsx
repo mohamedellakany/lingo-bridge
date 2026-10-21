@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -144,6 +145,11 @@ export default function LoginScreen() {
               )}
             </LinearGradient>
           </TouchableOpacity>
+
+          <GoogleSignInButton
+            onError={setError}
+            onSuccess={() => router.replace("/(tabs)/")}
+          />
 
           <View style={styles.switchRow}>
             <Text style={[styles.switchText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>

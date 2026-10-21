@@ -27,6 +27,8 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<{ error?: string }>;
+  // Sign in / auto-register using a verified Google ID token.
+  loginWithGoogle: (idToken: string) => Promise<{ error?: string }>;
   // Step 1 of signup: sends an OTP to the email. On success the caller moves
   // to the verification step. Does NOT log the user in yet.
   register: (
@@ -89,6 +91,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           error?: string;
         };
         if (!resp.ok || data.error) return { error: data.error ?? "Login failed" };
+        await Promise.all([
+          AsyncStorage.setItem(TOKEN_KEY, data.token!),
+          AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user!)),
+        ]);
+        setToken(data.token!);
+        setUser(data.user!);
+        return {};
+      } catch {
+        return { error: "Network error. Please try again." };
+      }
+    },
+    []
+  );
+
+  const loginWithGoogle = useCallback(
+    async (idToken: string): Promise<{ error?: string }> => {
+      try {
+        const resp = await fetch(`${API_BASE}/api/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        });
+        const data = (await resp.json()) as {
+          user?: AuthUser;
+          token?: string;
+          error?: string;
+        };
+        if (!resp.ok || data.error) {
+          return { error: data.error ?? "Google sign-in failed" };
+        }
         await Promise.all([
           AsyncStorage.setItem(TOKEN_KEY, data.token!),
           AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user!)),
@@ -198,7 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, login, register, verifyOtp, resendOtp, logout }}
+      value={{ user, token, isLoading, login, loginWithGoogle, register, verifyOtp, resendOtp, logout }}
     >
       {children}
     </AuthContext.Provider>
