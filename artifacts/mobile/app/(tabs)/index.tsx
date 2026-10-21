@@ -147,6 +147,16 @@ export default function HomeScreen() {
 
               <TouchableOpacity
                 style={styles.menuItem}
+                onPress={() => { setMenuOpen(false); router.push("/account"); }}
+              >
+                <Ionicons name="settings-outline" size={18} color={colors.foreground} />
+                <Text style={[styles.menuItemText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>
+                  Account Settings
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
                 onPress={() => { setMenuOpen(false); router.push("/legal/privacy"); }}
               >
                 <Ionicons name="shield-outline" size={18} color={colors.foreground} />

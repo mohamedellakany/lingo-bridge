@@ -498,3 +498,104 @@ export async function purgeExpiredTokens(): Promise<void> {
     if (changed) saveToDisk();
   }
 }
+
+// ── Account management ───────────────────────────────────────────────────────
+
+async function findUserById(id: string): Promise<User | undefined> {
+  if (db) {
+    const rows = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, id))
+      .limit(1);
+    const r = rows[0];
+    if (!r) return undefined;
+    return {
+      id: r.id,
+      username: r.username,
+      email: r.email,
+      speakerCode: r.speakerCode,
+      passwordHash: r.passwordHash,
+      emailVerified: r.emailVerified,
+      createdAt: r.createdAt.getTime(),
+    };
+  }
+  for (const u of memUsers.values()) {
+    if (u.id === id) return u;
+  }
+  return undefined;
+}
+
+/**
+ * Changes the password for the user identified by a valid token. Requires the
+ * current password to match. Invalidates all other sessions by deleting the
+ * user's other tokens, keeping only the current one.
+ */
+export async function changePassword(
+  token: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ ok: true } | { error: string }> {
+  if (newPassword.length < 6) {
+    return { error: "New password must be at least 6 characters" };
+  }
+
+  const publicUser = await getUserByToken(token);
+  if (!publicUser) return { error: "Not authenticated" };
+
+  const user = await findUserById(publicUser.id);
+  if (!user) return { error: "Account not found" };
+
+  const ok = await verifyPassword(currentPassword, user.passwordHash);
+  if (!ok) return { error: "Current password is incorrect" };
+
+  const newHash = await hashPassword(newPassword);
+
+  if (db) {
+    await db
+      .update(usersTable)
+      .set({ passwordHash: newHash })
+      .where(eq(usersTable.id, user.id));
+    // Invalidate all sessions except the current token.
+    await db.delete(authTokensTable).where(eq(authTokensTable.userId, user.id));
+    await storeToken(token, user.id, Date.now() + TOKEN_TTL_MS);
+  } else {
+    user.passwordHash = newHash;
+    for (const [t, rec] of memTokens.entries()) {
+      if (rec.userId === user.id && t !== token) memTokens.delete(t);
+    }
+    memTokens.set(token, { userId: user.id, expiresAt: Date.now() + TOKEN_TTL_MS });
+    saveToDisk();
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Permanently deletes the account for the user identified by a valid token,
+ * along with all their tokens. Sessions/transcripts are removed via the DB's
+ * ON DELETE CASCADE (and separately for the in-memory store by the caller).
+ */
+export async function deleteAccount(
+  token: string
+): Promise<{ ok: true; userId: string } | { error: string }> {
+  const publicUser = await getUserByToken(token);
+  if (!publicUser) return { error: "Not authenticated" };
+
+  const userId = publicUser.id;
+
+  if (db) {
+    await db.delete(authTokensTable).where(eq(authTokensTable.userId, userId));
+    await db.delete(usersTable).where(eq(usersTable.id, userId));
+  } else {
+    for (const [t, rec] of memTokens.entries()) {
+      if (rec.userId === userId) memTokens.delete(t);
+    }
+    for (const [key, u] of memUsers.entries()) {
+      if (u.id === userId) memUsers.delete(key);
+    }
+    saveToDisk();
+  }
+
+  return { ok: true, userId };
+}

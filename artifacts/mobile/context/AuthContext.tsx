@@ -39,6 +39,11 @@ interface AuthContextType {
   // Step 2 of signup: verifies the emailed code and logs the user in.
   verifyOtp: (username: string, code: string) => Promise<{ error?: string }>;
   resendOtp: (username: string) => Promise<{ error?: string }>;
+  changePassword: (
+    currentPassword: string,
+    newPassword: string
+  ) => Promise<{ error?: string }>;
+  deleteAccount: () => Promise<{ error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -212,6 +217,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const changePassword = useCallback(
+    async (
+      currentPassword: string,
+      newPassword: string
+    ): Promise<{ error?: string }> => {
+      if (!token) return { error: "Not authenticated" };
+      try {
+        const resp = await fetch(`${API_BASE}/api/auth/change-password`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ currentPassword, newPassword }),
+        });
+        const data = (await resp.json()) as { ok?: boolean; error?: string };
+        if (!resp.ok || data.error) {
+          return { error: data.error ?? "Could not change password" };
+        }
+        return {};
+      } catch {
+        return { error: "Network error. Please try again." };
+      }
+    },
+    [token]
+  );
+
   const logout = useCallback(async () => {
     try {
       if (token) {
@@ -228,9 +260,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
   }, [token]);
 
+  const deleteAccount = useCallback(async (): Promise<{ error?: string }> => {
+    if (!token) return { error: "Not authenticated" };
+    try {
+      const resp = await fetch(`${API_BASE}/api/auth/account`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = (await resp.json()) as { ok?: boolean; error?: string };
+      if (!resp.ok || data.error) {
+        return { error: data.error ?? "Could not delete account" };
+      }
+      // Clear local session after successful deletion.
+      await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+      setUser(null);
+      setToken(null);
+      return {};
+    } catch {
+      return { error: "Network error. Please try again." };
+    }
+  }, [token]);
+
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, login, loginWithGoogle, register, verifyOtp, resendOtp, logout }}
+      value={{
+        user,
+        token,
+        isLoading,
+        login,
+        loginWithGoogle,
+        register,
+        verifyOtp,
+        resendOtp,
+        changePassword,
+        deleteAccount,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>

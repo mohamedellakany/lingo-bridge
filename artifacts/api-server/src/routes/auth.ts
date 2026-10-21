@@ -1,6 +1,8 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
+  changePassword,
+  deleteAccount,
   getUserByToken,
   loginOrCreateWithGoogle,
   loginUser,
@@ -9,6 +11,7 @@ import {
   startRegistration,
   verifyOtp,
 } from "../store/users";
+import { deleteSessionsByUser } from "../store/sessions";
 import { sendOtpEmail } from "../lib/email";
 import { logger } from "../lib/logger";
 
@@ -219,6 +222,48 @@ router.get("/auth/me", async (req, res) => {
 router.post("/auth/logout", async (req, res) => {
   const token = req.headers.authorization?.replace("Bearer ", "");
   if (token) await logoutUser(token);
+  res.json({ ok: true });
+});
+
+// Change the current user's password.
+router.post("/auth/change-password", async (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const { currentPassword, newPassword } = req.body as {
+    currentPassword?: string;
+    newPassword?: string;
+  };
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "Current and new password are required" });
+    return;
+  }
+
+  const result = await changePassword(token, currentPassword, newPassword);
+  if ("error" in result) {
+    res.status(400).json(result);
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Permanently delete the current user's account and all their data.
+router.delete("/auth/account", async (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const result = await deleteAccount(token);
+  if ("error" in result) {
+    res.status(400).json(result);
+    return;
+  }
+  // Also remove the user's sessions/transcripts.
+  await deleteSessionsByUser(result.userId);
   res.json({ ok: true });
 });
 

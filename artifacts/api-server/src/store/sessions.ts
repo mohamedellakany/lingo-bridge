@@ -214,6 +214,18 @@ export async function listSessionsByUser(userId: string): Promise<SessionData[]>
   return result;
 }
 
+/** Deletes all sessions (and their translations) belonging to a user. */
+export async function deleteSessionsByUser(userId: string): Promise<void> {
+  if (db) {
+    // translations cascade-delete via the sessions FK.
+    await db.delete(sessionsTable).where(eq(sessionsTable.userId, userId));
+  } else {
+    for (const [code, s] of memSessions.entries()) {
+      if (s.userId === userId) memSessions.delete(code);
+    }
+  }
+}
+
 export async function endSessionByCode(code: string): Promise<void> {
   const key = code.toUpperCase();
   if (db) {
