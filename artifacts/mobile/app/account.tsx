@@ -88,7 +88,7 @@ export default function AccountScreen() {
       setDeleteError(res.error);
     } else {
       setConfirmDelete(false);
-      router.replace("/(tabs)/");
+      router.replace("/");
     }
   };
 
@@ -107,7 +107,7 @@ export default function AccountScreen() {
     >
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           style={styles.backBtn}
           accessibilityRole="button"
           accessibilityLabel="Go back"

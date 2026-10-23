@@ -122,7 +122,7 @@ export default function RegisterScreen() {
       setOtp(Array(OTP_LENGTH).fill(""));
       otpInputs.current[0]?.focus();
     } else {
-      router.replace("/(tabs)/");
+      router.replace("/");
     }
   };
 
@@ -279,7 +279,7 @@ export default function RegisterScreen() {
 
         <GoogleSignInButton
           onError={setError}
-          onSuccess={() => router.replace("/(tabs)/")}
+          onSuccess={() => router.replace("/")}
         />
 
         <View style={styles.switchRow}>

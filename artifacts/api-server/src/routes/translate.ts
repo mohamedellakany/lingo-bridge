@@ -42,6 +42,28 @@ const MIME_TYPES: Record<string, string> = {
   aac: "audio/aac",
 };
 
+// Whisper tends to "hallucinate" stock phrases on silent/near-silent audio —
+// most commonly subtitle credits it learned from training data. These are not
+// real speech, so we discard them instead of transcribing/saving them.
+const HALLUCINATION_PATTERNS: RegExp[] = [
+  /ترجمة/i, // "translation by ..." (Arabic subtitle credits, e.g. نانسي قنقر)
+  /اشترك.*القناة/i, // "subscribe to the channel"
+  /ترجمة نانسي قنقر/i,
+  /^thank you( for watching)?\.?$/i,
+  /^thanks for watching\.?$/i,
+  /^please subscribe\.?$/i,
+  /^subtitles? by/i,
+  /^amara\.org/i,
+  /^\s*\.{2,}\s*$/, // just dots
+  /^[\s.。،,!?-]+$/, // only punctuation/whitespace
+];
+
+function isHallucination(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 2) return true;
+  return HALLUCINATION_PATTERNS.some((re) => re.test(t));
+}
+
 router.post("/translate", async (req, res) => {
   const { audio, format, fromLang, toLang, fromLangName, toLangName, sessionCode } =
     req.body as {
@@ -69,11 +91,15 @@ router.post("/translate", async (req, res) => {
       model: active.transcribeModel,
       language: fromLang,
       response_format: "json",
+      // A low temperature makes Whisper less likely to invent text on silence.
+      temperature: 0,
     });
 
     const original = transcriptionResponse.text?.trim();
 
-    if (!original || original.length < 2) {
+    // Drop empty results and known hallucinations (subtitle credits, etc.) so
+    // they never get translated, saved, or broadcast to listeners.
+    if (!original || isHallucination(original)) {
       res.json({ original: "", translated: "" });
       return;
     }

@@ -360,6 +360,11 @@ export default function SpeakerScreen() {
     }
   };
 
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  };
+
   const handleBack = () => {
     if (isRecording) {
       Alert.alert("Stop Session?", "This will end the active recording.", [
@@ -369,12 +374,12 @@ export default function SpeakerScreen() {
           style: "destructive",
           onPress: async () => {
             await handleStopRecording();
-            router.back();
+            goBack();
           },
         },
       ]);
     } else {
-      router.back();
+      goBack();
     }
   };
 

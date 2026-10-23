@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -65,8 +66,10 @@ export default function ListenerScreen() {
     translated: string;
   } | null>(null);
   const [connectedCount] = useState(() => Math.floor(1 + Math.random() * 8));
-  const [listenMode, setListenMode] = useState<ListenMode>("listen");
+  // Default to text-only ("read"): show the live transcript without speaking it.
+  const [listenMode, setListenMode] = useState<ListenMode>("read");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -264,6 +267,40 @@ export default function ListenerScreen() {
     lastSpokenIdRef.current = "";
   };
 
+  function fmtTime(ts: number): string {
+    return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // Build a plain-text transcript of the whole conversation (both languages).
+  const buildTranscript = (): string => {
+    if (!joinedSession) return "";
+    const header =
+      `LingoBridge transcript\n` +
+      `Speaker: ${joinedSession.code}\n` +
+      `${joinedSession.fromLangName} → ${joinedSession.toLangName}\n\n`;
+    const body = joinedSession.translations
+      .map((t) => `[${fmtTime(t.timestamp)}] ${t.original}\n→ ${t.translated}`)
+      .join("\n\n");
+    return header + body;
+  };
+
+  // Save = export the transcript (share sheet on native, clipboard on web).
+  const handleSaveTranscript = async () => {
+    const text = buildTranscript();
+    if (!text || !joinedSession || joinedSession.translations.length === 0) return;
+    try {
+      if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        return;
+      }
+      await Share.share({ message: text });
+    } catch {
+      // user cancelled or unavailable — ignore
+    }
+  };
+
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0) + 12;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
 
@@ -282,45 +319,61 @@ export default function ListenerScreen() {
 
           <View style={styles.sessionInfo}>
             <View style={[styles.liveDot, { backgroundColor: "#22C55E" }]} />
-            <Text style={[styles.sessionCode, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-              {joinedSession.code}
-            </Text>
-            <View style={styles.connectedBadge}>
-              <Ionicons name="people" size={12} color={colors.mutedForeground} />
-              <Text style={[styles.connectedText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                {connectedCount + 1}
+            <View>
+              <Text style={[styles.speakerLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                Speaker
+              </Text>
+              <Text style={[styles.sessionCode, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+                {joinedSession.code}
               </Text>
             </View>
           </View>
 
-          {/* Listen / Read toggle */}
-          <TouchableOpacity
-            onPress={toggleListenMode}
-            style={[
-              styles.modeToggle,
-              {
-                backgroundColor: listenMode === "listen" ? colors.primary + "22" : colors.card,
-                borderColor: listenMode === "listen" ? colors.primary + "66" : colors.border,
-              },
-            ]}
-          >
-            <Ionicons
-              name={listenMode === "listen" ? "volume-high" : "eye-outline"}
-              size={16}
-              color={listenMode === "listen" ? colors.primary : colors.mutedForeground}
-            />
-            <Text
+          <View style={styles.headerActions}>
+            {/* Save transcript */}
+            <TouchableOpacity
+              onPress={handleSaveTranscript}
+              disabled={joinedSession.translations.length === 0}
+              style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Save transcript"
+            >
+              <Ionicons
+                name={copied ? "checkmark" : Platform.OS === "web" ? "copy-outline" : "save-outline"}
+                size={16}
+                color={joinedSession.translations.length === 0 ? colors.mutedForeground : colors.primary}
+              />
+            </TouchableOpacity>
+
+            {/* Listen / Read toggle */}
+            <TouchableOpacity
+              onPress={toggleListenMode}
               style={[
-                styles.modeToggleText,
+                styles.modeToggle,
                 {
-                  color: listenMode === "listen" ? colors.primary : colors.mutedForeground,
-                  fontFamily: "Inter_600SemiBold",
+                  backgroundColor: listenMode === "listen" ? colors.primary + "22" : colors.card,
+                  borderColor: listenMode === "listen" ? colors.primary + "66" : colors.border,
                 },
               ]}
             >
-              {listenMode === "listen" ? "Listen" : "Read"}
-            </Text>
-          </TouchableOpacity>
+              <Ionicons
+                name={listenMode === "listen" ? "volume-high" : "eye-outline"}
+                size={16}
+                color={listenMode === "listen" ? colors.primary : colors.mutedForeground}
+              />
+              <Text
+                style={[
+                  styles.modeToggleText,
+                  {
+                    color: listenMode === "listen" ? colors.primary : colors.mutedForeground,
+                    fontFamily: "Inter_600SemiBold",
+                  },
+                ]}
+              >
+                {listenMode === "listen" ? "Listen" : "Read"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Language row */}
@@ -400,25 +453,30 @@ export default function ListenerScreen() {
                 </Text>
               </View>
 
-              {/* History */}
+              {/* Full transcript — the whole conversation, newest first */}
               {joinedSession.translations.length > 1 && (
                 <View style={styles.historyList}>
                   <Text style={[styles.historyLabel, { color: colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>
-                    EARLIER
+                    FULL TRANSCRIPT · {joinedSession.translations.length} PHRASES
                   </Text>
-                  {joinedSession.translations
-                    .slice(-5, -1)
+                  {[...joinedSession.translations]
                     .reverse()
-                    .map((t, i) => (
+                    .map((t) => (
                       <View
                         key={t.id}
                         style={[
-                          styles.historyItem,
-                          { backgroundColor: colors.card, borderColor: colors.border, opacity: 0.7 - i * 0.1 },
+                          styles.transcriptItem,
+                          { backgroundColor: colors.card, borderColor: colors.border },
                         ]}
                       >
-                        <Text style={[styles.historyText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]} numberOfLines={2}>
+                        <Text style={[styles.transcriptTime, { color: colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>
+                          {fmtTime(t.timestamp)}
+                        </Text>
+                        <Text style={[styles.transcriptTranslated, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
                           {t.translated}
+                        </Text>
+                        <Text style={[styles.transcriptOriginal, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                          {t.original}
                         </Text>
                       </View>
                     ))}
@@ -512,7 +570,12 @@ export default function ListenerScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="chevron-back" size={24} color={colors.foreground} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -652,9 +715,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingBottom: 10,
   },
   leaveBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  sessionInfo: { flexDirection: "row", alignItems: "center", gap: 7 },
+  sessionInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
   liveDot: { width: 8, height: 8, borderRadius: 4 },
-  sessionCode: { fontSize: 15 },
+  sessionCode: { fontSize: 16, letterSpacing: 0.5 },
+  speakerLabel: { fontSize: 10, letterSpacing: 0.6, marginBottom: 1 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  iconBtn: {
+    width: 36, height: 36, borderRadius: 18, borderWidth: 1,
+    alignItems: "center", justifyContent: "center",
+  },
   connectedBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
   connectedText: { fontSize: 13 },
   modeToggle: {
@@ -692,6 +761,10 @@ const styles = StyleSheet.create({
   originalText: { fontSize: 14, lineHeight: 21 },
   historyList: { gap: 8 },
   historyLabel: { fontSize: 10, letterSpacing: 0.8 },
+  transcriptItem: { borderRadius: 12, padding: 12, borderWidth: 1, gap: 4 },
+  transcriptTime: { fontSize: 10, letterSpacing: 0.5 },
+  transcriptTranslated: { fontSize: 15, lineHeight: 22 },
+  transcriptOriginal: { fontSize: 13, lineHeight: 19 },
   historyItem: { borderRadius: 12, padding: 12, borderWidth: 1 },
   historyText: { fontSize: 14 },
   waitingContainer: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, paddingHorizontal: 32 },

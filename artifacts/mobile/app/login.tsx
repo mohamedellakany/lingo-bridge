@@ -41,7 +41,7 @@ export default function LoginScreen() {
     if (result.error) {
       setError(result.error);
     } else {
-      router.replace("/(tabs)/");
+      router.replace("/");
     }
   };
 
@@ -148,7 +148,7 @@ export default function LoginScreen() {
 
           <GoogleSignInButton
             onError={setError}
-            onSuccess={() => router.replace("/(tabs)/")}
+            onSuccess={() => router.replace("/")}
           />
 
           <View style={styles.switchRow}>

@@ -15,7 +15,7 @@ export default function PrivacyScreen() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad }]}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
           style={styles.backBtn}
           accessibilityRole="button"
           accessibilityLabel="Go back"
